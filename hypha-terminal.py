@@ -169,7 +169,7 @@ authorized_users = set()
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     try:
-        with open("/home/weiouyang/workspace/hypha-terminal/index.html", "r") as f:
+        with open("./index.html", "r") as f:
             html_content = f.read()
             # Inject the terminal service ID into the HTML
             if terminal_service_id:

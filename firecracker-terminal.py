@@ -20,7 +20,10 @@ class FirecrackerTerminal:
         self.user_terminals = {}  # user_id -> {terminal_id -> terminal_data}
         self.terminal_counter = 0
     
-    def create_terminal(self, user_id):
+    def create_terminal(self, recipe, user_id):
+        """Create a new terminal session with firecracker VM"""
+        print(f"Creating terminal for user: {user_id}, recipe: {recipe}")
+        # Generate unique terminal ID and session UUID
         terminal_id = f"terminal_{self.terminal_counter}"
         self.terminal_counter += 1
         session_uuid = str(uuid.uuid4())
@@ -273,7 +276,7 @@ authorized_users = set()
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     try:
-        with open("/home/weiouyang/workspace/hypha-terminal/index.html", "r") as f:
+        with open("./firecracker-index.html", "r") as f:
             html_content = f.read()
             # Inject the terminal service ID into the HTML
             if terminal_service_id:
@@ -336,10 +339,10 @@ async def main():
         if user_email not in authorized_users:
             raise AuthorizationError(f"Email '{user_email}' not in authorized users list")
     
-    def create_terminal_with_context(context=None):
+    def create_terminal_with_context(recipe, context=None):
         check_authorization(context)
         user_id = context.get("user", {}).get("id") if context else "anonymous"
-        return terminal_manager.create_terminal(user_id)
+        return terminal_manager.create_terminal(recipe, user_id)
     
     def write_to_terminal_with_context(terminal_id, command, context=None):
         check_authorization(context)
