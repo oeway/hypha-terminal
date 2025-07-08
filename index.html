@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hypha Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hypha-rpc@latest/dist/hypha-rpc-websocket.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hypha-rpc@0.20.64/dist/hypha-rpc-websocket.min.js"></script>
     
     <!-- xterm.js -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
@@ -350,7 +350,7 @@
                 } else {
                     // Fallback service discovery
                     const services = await this.server.list_services();
-                    const terminalServices = services.filter(s => s.id.includes('hypha-terminal-service'));
+                    const terminalServices = services.filter(s => s.id.includes('terminal-service'));
                     if (terminalServices.length > 0) {
                         this.terminalService = await this.server.getService(terminalServices[0].id);
                     } else {
