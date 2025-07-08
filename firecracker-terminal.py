@@ -30,7 +30,7 @@ class FirecrackerTerminal:
         
         # Start firecracker with unique socket
         firecracker_cmd = [
-            './firecracker',
+            './bin/firecracker',
             '--api-sock', socket_path
         ]
         
@@ -94,7 +94,7 @@ class FirecrackerTerminal:
             '-X', 'PUT', 'http://localhost/boot-source',
             '-H', 'Accept: application/json',
             '-H', 'Content-Type: application/json',
-            '-d', '{"kernel_image_path":"./hello-vmlinux.bin","boot_args":"console=ttyS0 reboot=k panic=1 pci=off"}'
+            '-d', '{"kernel_image_path":"./bin/hello-vmlinux.bin","boot_args":"console=ttyS0 reboot=k panic=1 pci=off"}'
         ]
         
         result = subprocess.run(boot_cmd, capture_output=True, text=True)
@@ -107,7 +107,7 @@ class FirecrackerTerminal:
             '-X', 'PUT', 'http://localhost/drives/rootfs',
             '-H', 'Accept: application/json',
             '-H', 'Content-Type: application/json',
-            '-d', '{"drive_id":"rootfs","path_on_host":"./hello-rootfs.ext4","is_root_device":true,"is_read_only":false}'
+            '-d', '{"drive_id":"rootfs","path_on_host":"./bin/hello-rootfs.ext4","is_root_device":true,"is_read_only":false}'
         ]
         
         result = subprocess.run(drive_cmd, capture_output=True, text=True)
