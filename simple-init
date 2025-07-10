@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Simple init script for Firecracker VMs - no Go required
+# This replaces the Go init binary with a shell script
+
+set -e
+
+echo "Simple init starting..."
+
+# Basic system setup
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+# /dev is already mounted by kernel, skip it
+
+# Create additional device nodes
+mkdir -p /dev/pts 2>/dev/null || true
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+
+# Set hostname
+echo "lab-vm" > /proc/sys/kernel/hostname 2>/dev/null || true
+
+# Configure DNS servers
+echo "nameserver 130.237.72.200" > /etc/resolv.conf
+echo "nameserver 130.237.72.201" >> /etc/resolv.conf
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+
+# Set up basic environment
+export TERM=xterm
+export PS1="lab-vm:\w # "
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+echo "Simple init: mounting filesystems complete"
+
+# Change to scientist user directory
+cd /home/scientist || cd /
+
+# Set up environment for scientist user
+export HOME=/home/scientist
+export USER=scientist
+
+# Activate Python venv if it exists
+if [ -f /home/scientist/.venv/bin/activate ]; then
+    source /home/scientist/.venv/bin/activate
+fi
+
+echo "Simple init: environment setup complete"
+echo "Starting interactive shell as scientist user..."
+
+# Switch to scientist user and start bash
+exec su -l scientist -c "/bin/bash" 

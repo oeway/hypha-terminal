@@ -80,7 +80,7 @@ class FirecrackerTerminal:
             return {"error": str(e), "success": False}
     
     def _configure_firecracker(self, socket_path):
-        """Configure firecracker VM using the commands from 3-start.sh"""
+        """Configure firecracker VM using the commands from boot.sh"""
         
         # Wait for socket to be available
         max_attempts = 10
@@ -97,12 +97,38 @@ class FirecrackerTerminal:
             '-X', 'PUT', 'http://localhost/boot-source',
             '-H', 'Accept: application/json',
             '-H', 'Content-Type: application/json',
-            '-d', '{"kernel_image_path":"./bin/hello-vmlinux.bin","boot_args":"console=ttyS0 reboot=k panic=1 pci=off"}'
+            '-d', '{"kernel_image_path":"bin/vmlinux","boot_args":"console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw init=/init ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off:130.237.72.200:130.237.72.201"}'
         ]
         
         result = subprocess.run(boot_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise Exception(f"Failed to configure boot source: {result.stderr}")
+        
+        # Configure memory and vCPUs
+        machine_cmd = [
+            'curl', '--unix-socket', socket_path, '-i',
+            '-X', 'PUT', 'http://localhost/machine-config',
+            '-H', 'Accept: application/json',
+            '-H', 'Content-Type: application/json',
+            '-d', '{"vcpu_count":2,"mem_size_mib":256}'
+        ]
+        
+        result = subprocess.run(machine_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"Failed to configure machine: {result.stderr}")
+        
+        # Configure network interface
+        network_cmd = [
+            'curl', '--unix-socket', socket_path, '-i',
+            '-X', 'PUT', 'http://localhost/network-interfaces/eth0',
+            '-H', 'Accept: application/json',
+            '-H', 'Content-Type: application/json',
+            '-d', '{"iface_id":"eth0","host_dev_name":"ftap0"}'
+        ]
+        
+        result = subprocess.run(network_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"Failed to configure network interface: {result.stderr}")
         
         # Configure root filesystem
         drive_cmd = [
@@ -110,7 +136,7 @@ class FirecrackerTerminal:
             '-X', 'PUT', 'http://localhost/drives/rootfs',
             '-H', 'Accept: application/json',
             '-H', 'Content-Type: application/json',
-            '-d', '{"drive_id":"rootfs","path_on_host":"./bin/hello-rootfs.ext4","is_root_device":true,"is_read_only":false}'
+            '-d', '{"drive_id":"rootfs","path_on_host":"bin/rootfs.img","is_root_device":true,"is_read_only":false}'
         ]
         
         result = subprocess.run(drive_cmd, capture_output=True, text=True)

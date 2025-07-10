@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hypha Cloud Hypervisor Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hypha-rpc@0.20.64/dist/hypha-rpc-websocket.min.js"></script>
+    
+    <!-- xterm.js -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        terminal: {
+                            bg: '#0d1117',
+                            surface: '#161b22',
+                            border: '#30363d',
+                            text: '#c9d1d9',
+                            accent: '#58a6ff',
+                            success: '#238636',
+                            error: '#da3633',
+                            warning: '#f85149'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        .terminal-container {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+            padding: 4px;
+        }
+        .xterm-screen {
+            background-color: #0d1117 !important;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .glass-effect {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        @media (max-height: 700px) {
+            .max-h-screen {
+                max-height: 95vh;
+            }
+        }
+        
+        @media (max-width: 640px) {
+            .max-w-2xl {
+                max-width: 95vw;
+            }
+        }
+    </style>
+</head>
+<body class="bg-terminal-bg text-terminal-text min-h-screen overflow-hidden">
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="fixed inset-0 gradient-bg flex items-center justify-center">
+        <div class="glass-effect rounded-2xl p-8 w-96 max-w-md mx-4 shadow-2xl">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                <h2 class="text-xl font-bold text-white mb-2">Hypha Cloud Hypervisor Terminal</h2>
+                <p id="loadingStatusText" class="text-gray-200">Checking session...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="fixed inset-0 gradient-bg flex items-center justify-center hidden">
+        <div class="glass-effect rounded-2xl p-8 w-96 max-w-md mx-4 shadow-2xl">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-white mb-2">Hypha Cloud Hypervisor Terminal</h1>
+                <p class="text-gray-200">High-performance VM terminal access</p>
+            </div>
+            
+            <div class="space-y-4">
+                <button id="loginBtn" class="w-full bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 border border-white border-opacity-30">
+                    <span class="flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M3 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zm7.707 3.293a1 1 0 010 1.414L9.414 9H17a1 1 0 110 2H9.414l1.293 1.293a1 1 0 01-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        Connect to Hypha
+                    </span>
+                </button>
+                
+                <div id="loginStatus" class="text-center text-sm text-gray-300 hidden">
+                    <div class="flex items-center justify-center">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        <span id="loginStatusText">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp" class="hidden h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-terminal-surface border-b border-terminal-border px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <h1 class="text-xl font-bold text-terminal-accent">Hypha Cloud Hypervisor Terminal</h1>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <!-- Terminal Management Menu -->
+                <div class="relative">
+                    <button id="terminalMenuBtn" class="bg-terminal-accent hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span>VMs</span>
+                    </button>
+                    
+                    <div id="terminalMenu" class="absolute right-0 mt-2 w-48 bg-terminal-surface border border-terminal-border rounded-lg shadow-lg z-50 hidden">
+                        <div class="py-2">
+                            <button id="newTerminalBtn" class="w-full text-left px-4 py-2 hover:bg-terminal-border text-terminal-success flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span>New Cloud Hypervisor VM</span>
+                            </button>
+                            <div class="border-t border-terminal-border my-1"></div>
+                            <div id="terminalList" class="max-h-32 overflow-y-auto">
+                                <!-- Terminal list will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Menu -->
+                <div class="relative">
+                    <button id="userMenuBtn" class="bg-terminal-surface hover:bg-terminal-border text-white p-2 rounded-lg flex items-center space-x-2 transition-colors border border-terminal-border">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd"></path>
+                        </svg>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                    
+                    <div id="userMenu" class="absolute right-0 mt-2 w-64 bg-terminal-surface border border-terminal-border rounded-lg shadow-lg z-50 hidden">
+                        <div class="py-2">
+                            <div class="px-4 py-2 border-b border-terminal-border">
+                                <div class="text-sm text-gray-400">Signed in as</div>
+                                <div id="userEmail" class="text-sm font-medium text-terminal-text truncate">
+                                    <!-- User email will be populated here -->
+                                </div>
+                            </div>
+                            <button id="logoutBtn" class="w-full text-left px-4 py-2 hover:bg-terminal-border text-terminal-error flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span>Logout</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Status Bar -->
+        <div id="statusBar" class="bg-terminal-surface border-b border-terminal-border px-6 py-2 text-sm">
+            <div class="flex items-center justify-between">
+                <div id="connectionStatus" class="flex items-center space-x-2">
+                    <div class="w-2 h-2 bg-terminal-success rounded-full"></div>
+                    <span class="text-terminal-text">Cloud Hypervisor Connected</span>
+                </div>
+                <div id="activeTerminalInfo" class="text-gray-400">
+                    No active VM
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Area -->
+        <div class="flex-1 flex">
+            <!-- Welcome Screen -->
+            <div id="welcomeScreen" class="flex-1 flex items-center justify-center bg-terminal-bg">
+                <div class="text-center">
+                    <div class="text-6xl mb-4">🔥</div>
+                    <h2 class="text-2xl font-bold mb-4">Welcome to Hypha Cloud Hypervisor Terminal</h2>
+                    <p class="text-gray-400 mb-6">Create a new Cloud Hypervisor VM to get started</p>
+                    <button id="welcomeNewTerminal" class="bg-terminal-accent hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors">
+                        Create New Cloud Hypervisor VM
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Terminal Container -->
+            <div id="terminalContainer" class="flex-1 terminal-container m-4 hidden">
+                <div id="terminal" class="h-full"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Configuration Dialog -->
+    <div id="terminalConfigDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-terminal-surface border border-terminal-border rounded-lg shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto">
+            <div class="px-6 py-3 border-b border-terminal-border">
+                <h3 class="text-lg font-semibold text-terminal-text">Create New Cloud Hypervisor VM</h3>
+                <p class="text-sm text-gray-400 mt-1">Configure your Cloud Hypervisor virtual machine</p>
+            </div>
+            
+            <div class="px-6 py-4 space-y-3">
+                <!-- VM Name -->
+                <div>
+                    <label for="terminalName" class="block text-sm font-medium text-terminal-text mb-1">VM Name</label>
+                    <input type="text" id="terminalName" class="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-md text-terminal-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-terminal-accent focus:border-transparent" placeholder="My Cloud Hypervisor VM">
+                </div>
+                
+                <!-- VM Resources -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="vmCpus" class="block text-sm font-medium text-terminal-text mb-1">CPU Cores</label>
+                        <select id="vmCpus" class="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-md text-terminal-text focus:outline-none focus:ring-2 focus:ring-terminal-accent focus:border-transparent">
+                            <option value="1">1 Core</option>
+                            <option value="2" selected>2 Cores</option>
+                            <option value="4">4 Cores</option>
+                            <option value="8">8 Cores</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="vmMemory" class="block text-sm font-medium text-terminal-text mb-1">Memory</label>
+                        <select id="vmMemory" class="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-md text-terminal-text focus:outline-none focus:ring-2 focus:ring-terminal-accent focus:border-transparent">
+                            <option value="256M">256 MB</option>
+                            <option value="512M" selected>512 MB</option>
+                            <option value="1G">1 GB</option>
+                            <option value="2G">2 GB</option>
+                            <option value="4G">4 GB</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Boot Method -->
+                <div>
+                    <label class="block text-sm font-medium text-terminal-text mb-1">Boot Method</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="radio" name="bootMethod" value="kernel" checked class="mr-2">
+                            <span class="text-terminal-text">Direct Kernel Boot (Recommended)</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="bootMethod" value="firmware" class="mr-2">
+                            <span class="text-terminal-text">Firmware Boot (UEFI)</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Direct boot works with our raw ext4 filesystem. Firmware boot requires EFI bootable disk.</p>
+                </div>
+                
+                <!-- Python Packages -->
+                <div>
+                    <label for="pythonPackages" class="block text-sm font-medium text-terminal-text mb-1">Python Packages</label>
+                    <textarea id="pythonPackages" rows="2" class="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-md text-terminal-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-terminal-accent focus:border-transparent resize-none" placeholder="numpy pandas matplotlib jupyter requests"></textarea>
+                    <p class="text-xs text-gray-400 mt-1">Space-separated or one per line</p>
+                </div>
+                
+                <!-- Startup Script -->
+                <div>
+                    <label for="startupScript" class="block text-sm font-medium text-terminal-text mb-1">VM Startup Script</label>
+                    <textarea id="startupScript" rows="3" class="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-md text-terminal-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-terminal-accent focus:border-transparent resize-none" placeholder="echo 'Welcome to Cloud Hypervisor VM!'&#10;python --version"></textarea>
+                    <p class="text-xs text-gray-400 mt-1">Shell commands to run after VM boot</p>
+                </div>
+                
+                <!-- Quick Templates -->
+                <div>
+                    <label class="block text-sm font-medium text-terminal-text mb-1">Quick Templates</label>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button id="templateDataScience" class="px-2 py-1 bg-terminal-border hover:bg-terminal-accent text-terminal-text text-xs rounded-md transition-colors">
+                            Data Science
+                        </button>
+                        <button id="templateWebDev" class="px-2 py-1 bg-terminal-border hover:bg-terminal-accent text-terminal-text text-xs rounded-md transition-colors">
+                            Web Dev
+                        </button>
+                        <button id="templateMLOps" class="px-2 py-1 bg-terminal-border hover:bg-terminal-accent text-terminal-text text-xs rounded-md transition-colors">
+                            ML/AI
+                        </button>
+                        <button id="templateBasic" class="px-2 py-1 bg-terminal-border hover:bg-terminal-accent text-terminal-text text-xs rounded-md transition-colors">
+                            Basic
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="px-6 py-3 border-t border-terminal-border flex justify-between space-x-3">
+                <button id="configCancel" class="px-4 py-2 text-gray-400 hover:text-terminal-text transition-colors">
+                    Cancel
+                </button>
+                <div class="flex space-x-2">
+                    <button id="configSaveTemplate" class="px-4 py-2 bg-terminal-border hover:bg-gray-600 text-terminal-text rounded-md transition-colors">
+                        Save Template
+                    </button>
+                    <button id="configCreate" class="px-4 py-2 bg-terminal-accent hover:bg-blue-600 text-white rounded-md transition-colors">
+                        Create VM
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class HyphaCloudHypervisorApp {
+            constructor() {
+                this.server = null;
+                this.terminalService = null;
+                this.terminalServiceId = "{{TERMINAL_SERVICE_ID}}";
+                this.user = null;
+                this.terminals = new Map();
+                this.activeTerminalId = null;
+                this.currentTerm = null;
+                this.fitAddon = null;
+                this.connectionRetryInterval = null;
+                this.isReconnecting = false;
+                
+                this.initializeElements();
+                this.setupEventListeners();
+                this.loadPersistedTerminals();
+                
+                // Try to auto-login with existing token
+                this.autoLogin();
+            }
+
+            initializeElements() {
+                this.elements = {
+                    loadingScreen: document.getElementById('loadingScreen'),
+                    loadingStatusText: document.getElementById('loadingStatusText'),
+                    loginScreen: document.getElementById('loginScreen'),
+                    mainApp: document.getElementById('mainApp'),
+                    loginBtn: document.getElementById('loginBtn'),
+                    loginStatus: document.getElementById('loginStatus'),
+                    loginStatusText: document.getElementById('loginStatusText'),
+                    logoutBtn: document.getElementById('logoutBtn'),
+                    userMenuBtn: document.getElementById('userMenuBtn'),
+                    userMenu: document.getElementById('userMenu'),
+                    userEmail: document.getElementById('userEmail'),
+                    terminalMenuBtn: document.getElementById('terminalMenuBtn'),
+                    terminalMenu: document.getElementById('terminalMenu'),
+                    newTerminalBtn: document.getElementById('newTerminalBtn'),
+                    welcomeNewTerminal: document.getElementById('welcomeNewTerminal'),
+                    terminalList: document.getElementById('terminalList'),
+                    welcomeScreen: document.getElementById('welcomeScreen'),
+                    terminalContainer: document.getElementById('terminalContainer'),
+                    terminal: document.getElementById('terminal'),
+                    connectionStatus: document.getElementById('connectionStatus'),
+                    activeTerminalInfo: document.getElementById('activeTerminalInfo'),
+                    // Configuration dialog elements
+                    terminalConfigDialog: document.getElementById('terminalConfigDialog'),
+                    terminalName: document.getElementById('terminalName'),
+                    vmCpus: document.getElementById('vmCpus'),
+                    vmMemory: document.getElementById('vmMemory'),
+                    pythonPackages: document.getElementById('pythonPackages'),
+                    startupScript: document.getElementById('startupScript'),
+                    templateDataScience: document.getElementById('templateDataScience'),
+                    templateWebDev: document.getElementById('templateWebDev'),
+                    templateMLOps: document.getElementById('templateMLOps'),
+                    templateBasic: document.getElementById('templateBasic'),
+                    configCancel: document.getElementById('configCancel'),
+                    configSaveTemplate: document.getElementById('configSaveTemplate'),
+                    configCreate: document.getElementById('configCreate')
+                };
+            }
+
+            setupEventListeners() {
+                this.elements.loginBtn.addEventListener('click', () => this.login());
+                this.elements.logoutBtn.addEventListener('click', () => this.logout());
+                this.elements.newTerminalBtn.addEventListener('click', () => this.showConfigDialog());
+                this.elements.welcomeNewTerminal.addEventListener('click', () => this.showConfigDialog());
+                
+                // Configuration dialog event listeners
+                this.elements.configCancel.addEventListener('click', () => this.hideConfigDialog());
+                this.elements.configCreate.addEventListener('click', () => this.createTerminalWithConfig());
+                this.elements.configSaveTemplate.addEventListener('click', () => this.saveTemplate());
+                
+                // Template buttons
+                this.elements.templateDataScience.addEventListener('click', () => this.loadTemplate('dataScience'));
+                this.elements.templateWebDev.addEventListener('click', () => this.loadTemplate('webDev'));
+                this.elements.templateMLOps.addEventListener('click', () => this.loadTemplate('mlops'));
+                this.elements.templateBasic.addEventListener('click', () => this.loadTemplate('basic'));
+                
+                // Terminal menu toggle
+                this.elements.terminalMenuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.elements.terminalMenu.classList.toggle('hidden');
+                    this.elements.userMenu.classList.add('hidden');
+                });
+                
+                // User menu toggle
+                this.elements.userMenuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.elements.userMenu.classList.toggle('hidden');
+                    this.elements.terminalMenu.classList.add('hidden');
+                });
+                
+                // Close menus when clicking outside
+                document.addEventListener('click', (e) => {
+                    this.elements.terminalMenu.classList.add('hidden');
+                    this.elements.userMenu.classList.add('hidden');
+                });
+                
+                // Close config dialog when clicking outside
+                this.elements.terminalConfigDialog.addEventListener('click', (e) => {
+                    if (e.target === this.elements.terminalConfigDialog) {
+                        this.hideConfigDialog();
+                    }
+                });
+                
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    if (this.fitAddon && this.currentTerm) {
+                        setTimeout(() => this.fitAddon.fit(), 100);
+                    }
+                });
+            }
+
+            async autoLogin() {
+                // Check for existing token in localStorage
+                let token = localStorage.getItem("token");
+                const tokenExpiry = localStorage.getItem("tokenExpiry");
+                
+                // Check if token is expired (3 hours validity)
+                if (token && tokenExpiry) {
+                    const expiryDate = new Date(tokenExpiry);
+                    if (new Date() > expiryDate) {
+                        token = null;
+                        localStorage.removeItem("token");
+                        localStorage.removeItem("tokenExpiry");
+                    }
+                }
+                
+                // If no valid token exists, show login screen
+                if (!token) {
+                    this.showLoginScreen();
+                    return;
+                }
+                
+                // Try to connect with existing token (with timeout)
+                try {
+                    // Set a timeout for auto-login to prevent hanging
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Auto-login timeout')), 10000);
+                    });
+                    
+                    const loginPromise = this.connectWithToken(token);
+                    
+                    await Promise.race([loginPromise, timeoutPromise]);
+                    
+                } catch (error) {
+                    console.error('Auto-login failed:', error);
+                    
+                    // Clear invalid token and show login screen
+                    localStorage.removeItem("token");
+                    localStorage.removeItem("tokenExpiry");
+                    this.showLoginScreen();
+                }
+            }
+
+            async login() {
+                this.elements.loginBtn.disabled = true;
+                this.elements.loginStatus.classList.remove('hidden');
+                this.elements.loginStatusText.textContent = 'Connecting...';
+                
+                try {
+                    // Check for existing token in localStorage
+                    let token = localStorage.getItem("token");
+                    const tokenExpiry = localStorage.getItem("tokenExpiry");
+                    
+                    // Check if token is expired (3 hours validity)
+                    if (token && tokenExpiry) {
+                        const expiryDate = new Date(tokenExpiry);
+                        if (new Date() > expiryDate) {
+                            token = null;
+                            localStorage.removeItem("token");
+                            localStorage.removeItem("tokenExpiry");
+                        }
+                    }
+                    
+                    // Login if no valid token exists
+                    if (!token) {
+                        this.elements.loginStatusText.textContent = 'Opening login page...';
+                        
+                        const loginCallback = (context) => {
+                            window.open(context.login_url, '_blank');
+                        };
+                        
+                        token = await hyphaWebsocketClient.login({
+                            "server_url": "https://hypha.aicell.io",
+                            "login_callback": loginCallback,
+                        });
+                        
+                        // Store token with 3-hour expiry
+                        localStorage.setItem("token", token);
+                        localStorage.setItem("tokenExpiry", new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString());
+                    }
+                    
+                    await this.connectWithToken(token);
+                    
+                } catch (error) {
+                    console.error('Login failed:', error);
+                    this.showError('Login failed: ' + error.message);
+                    this.elements.loginBtn.disabled = false;
+                    this.elements.loginStatus.classList.add('hidden');
+                }
+            }
+
+            async connectWithToken(token) {
+                const isAutoLogin = this.elements.loadingScreen.classList.contains('hidden') === false;
+                const statusElement = isAutoLogin ? this.elements.loadingStatusText : this.elements.loginStatusText;
+                
+                statusElement.textContent = 'Connecting to Hypha server...';
+                
+                // Connect to Hypha server with token
+                this.server = await hyphaWebsocketClient.connectToServer({
+                    server_url: "https://hypha.aicell.io",
+                    token: token
+                });
+                
+                // Get user information
+                this.user = {
+                    id: this.server.config.user?.id || this.server.config.user_id || 'anonymous',
+                    email: this.server.config.user?.email || this.server.config.user_email || 'anonymous@example.com',
+                    workspace: this.server.config.workspace
+                };
+                
+                statusElement.textContent = 'Connecting to Cloud Hypervisor service...';
+                
+                // Connect to terminal service
+                await this.connectToTerminalService();
+                
+                // Switch to main app
+                this.showMainApp();
+            }
+
+            showLoginScreen() {
+                this.elements.loadingScreen.classList.add('hidden');
+                this.elements.loginScreen.classList.remove('hidden');
+                this.elements.mainApp.classList.add('hidden');
+                this.elements.loginBtn.disabled = false;
+                this.elements.loginStatus.classList.add('hidden');
+            }
+
+            async connectToTerminalService() {
+                if (this.terminalServiceId && !this.terminalServiceId.includes("TERMINAL_SERVICE_ID")) {
+                    this.terminalService = await this.server.getService(this.terminalServiceId);
+                } else {
+                    // Fallback service discovery
+                    const services = await this.server.list_services();
+                    const terminalServices = services.filter(s => s.id.includes('cloud-hypervisor-terminal-service'));
+                    if (terminalServices.length > 0) {
+                        this.terminalService = await this.server.getService(terminalServices[0].id);
+                    } else {
+                        throw new Error('Cloud Hypervisor terminal service not found');
+                    }
+                }
+            }
+
+            showMainApp() {
+                this.elements.loadingScreen.classList.add('hidden');
+                this.elements.loginScreen.classList.add('hidden');
+                this.elements.mainApp.classList.remove('hidden');
+                this.elements.loginStatus.classList.add('hidden');
+                this.elements.loginBtn.disabled = false;
+                this.elements.userEmail.textContent = this.user.email;
+                this.updateConnectionStatus('Cloud Hypervisor Connected', true);
+            }
+
+            logout() {
+                localStorage.removeItem("token");
+                localStorage.removeItem("tokenExpiry");
+                
+                // Close all terminals
+                for (const [terminalId, terminalData] of this.terminals) {
+                    this.closeTerminal(terminalId, false);
+                }
+                
+                // Reset state
+                this.terminals.clear();
+                this.activeTerminalId = null;
+                this.currentTerm = null;
+                this.server = null;
+                this.terminalService = null;
+                this.user = null;
+                
+                // Show login screen
+                this.showLoginScreen();
+            }
+
+            showConfigDialog() {
+                this.loadPreviousConfig();
+                this.elements.terminalConfigDialog.classList.remove('hidden');
+            }
+            
+            hideConfigDialog() {
+                this.elements.terminalConfigDialog.classList.add('hidden');
+            }
+            
+            loadTemplate(templateName) {
+                const templates = {
+                    dataScience: {
+                        name: 'Data Science Cloud Hypervisor VM',
+                        packages: 'numpy pandas matplotlib seaborn scikit-learn jupyter ipython',
+                        script: 'echo "Data Science Cloud Hypervisor VM ready!"\npython -c "import numpy, pandas, matplotlib; print(\'Libraries loaded successfully\')"'
+                    },
+                    webDev: {
+                        name: 'Web Development Cloud Hypervisor VM',
+                        packages: 'fastapi uvicorn requests beautifulsoup4 flask',
+                        script: 'echo "Web development Cloud Hypervisor VM ready!"\npython --version'
+                    },
+                    mlops: {
+                        name: 'ML/AI Cloud Hypervisor VM',
+                        packages: 'torch torchvision transformers huggingface_hub openai',
+                        script: 'echo "ML/AI Cloud Hypervisor VM ready!"\npython -c "import torch; print(f\'PyTorch version: {torch.__version__}\')"'
+                    },
+                    basic: {
+                        name: 'Basic Cloud Hypervisor VM',
+                        packages: 'requests',
+                        script: 'echo "Basic Cloud Hypervisor VM ready!"\npython --version'
+                    }
+                };
+                
+                const template = templates[templateName];
+                if (template) {
+                    this.elements.terminalName.value = template.name;
+                    this.elements.pythonPackages.value = template.packages;
+                    this.elements.startupScript.value = template.script;
+                }
+            }
+            
+            saveTemplate() {
+                const config = this.getConfigFromDialog();
+                const templateName = prompt('Enter template name:');
+                if (templateName) {
+                    const customTemplates = JSON.parse(localStorage.getItem('customCloudHypervisorTemplates') || '{}');
+                    customTemplates[templateName] = config;
+                    localStorage.setItem('customCloudHypervisorTemplates', JSON.stringify(customTemplates));
+                    alert('Template saved successfully!');
+                }
+            }
+            
+            getConfigFromDialog() {
+                const packagesText = this.elements.pythonPackages.value.trim();
+                const packages = packagesText ? packagesText.split(/[\n\s]+/).filter(pkg => pkg.length > 0) : [];
+                
+                const bootMethod = document.querySelector('input[name="bootMethod"]:checked').value;
+                
+                // Force direct kernel boot for safety (since firmware boot fails with our rootfs)
+                const useFirmware = false; // Always use direct kernel boot
+                
+                // Debug the radio button state
+                console.log(`Radio button selected: ${bootMethod}, use_firmware will be: ${useFirmware}`);
+                
+                return {
+                    name: this.elements.terminalName.value.trim() || `CloudHV ${this.terminals.size + 1}`,
+                    cpus: parseInt(this.elements.vmCpus.value),
+                    memory: this.elements.vmMemory.value,
+                    use_firmware: useFirmware,
+                    python_packages: packages,
+                    startup_script: this.elements.startupScript.value.trim()
+                };
+            }
+            
+            loadPreviousConfig() {
+                const lastConfig = JSON.parse(localStorage.getItem('lastCloudHypervisorConfig') || '{}');
+                this.elements.terminalName.value = lastConfig.name || '';
+                this.elements.vmCpus.value = lastConfig.cpus || 2;
+                this.elements.vmMemory.value = lastConfig.memory || '512M';
+                this.elements.pythonPackages.value = (lastConfig.python_packages || []).join('\n');
+                this.elements.startupScript.value = lastConfig.startup_script || '';
+                
+                // Always default to direct kernel boot (since it works with our setup)
+                // Force direct kernel boot as default since firmware boot fails with our rootfs
+                document.querySelector('input[name="bootMethod"][value="kernel"]').checked = true;
+                
+                // Clean up any old localStorage configs that had firmware boot enabled
+                if (lastConfig.use_firmware === true) {
+                    console.log('Previous config had firmware boot enabled, cleaning up and defaulting to direct kernel boot for compatibility');
+                    // Remove the problematic setting from localStorage
+                    lastConfig.use_firmware = false;
+                    localStorage.setItem('lastCloudHypervisorConfig', JSON.stringify(lastConfig));
+                }
+            }
+            
+            savePreviousConfig(config) {
+                localStorage.setItem('lastCloudHypervisorConfig', JSON.stringify(config));
+            }
+            
+            async createTerminalWithConfig() {
+                try {
+                    this.updateConnectionStatus('Creating Cloud Hypervisor VM...', true);
+                    
+                    const recipe = this.getConfigFromDialog();
+                    
+                    // Debug: Log the configuration being sent
+                    console.log('Creating VM with config:', JSON.stringify(recipe, null, 2));
+                    
+                    this.savePreviousConfig(recipe);
+                    this.hideConfigDialog();
+                    
+                    const result = await this.terminalService.create_terminal(recipe);
+                    if (!result.success) {
+                        throw new Error(result.error);
+                    }
+                    
+                    const terminalId = result.terminal_id;
+                    const terminalName = result.name || recipe.name;
+                    
+                    // Create xterm instance
+                    const term = this.createTerminalInstance();
+                    
+                    // Store terminal data
+                    this.terminals.set(terminalId, {
+                        term,
+                        fitAddon: this.fitAddon,
+                        name: terminalName,
+                        created: new Date(),
+                        recipe: recipe,
+                        running: true  // Assume running when created
+                    });
+
+                    // Set up terminal event handlers
+                    this.setupTerminalEventHandlers(term, terminalId);
+
+                    // Switch to this terminal
+                    this.switchToTerminal(terminalId);
+                    this.updateTerminalList();
+                    this.updateConnectionStatus('Cloud Hypervisor Connected', true);
+                    
+                    // Start periodic status checking
+                    this.startStatusMonitoring(terminalId);
+                    
+                } catch (error) {
+                    console.error('Failed to create terminal:', error);
+                    this.showError('Failed to create Cloud Hypervisor VM: ' + error.message);
+                    this.updateConnectionStatus('Cloud Hypervisor Connected', true);
+                }
+            }
+
+            createTerminalInstance() {
+                const term = new Terminal({
+                    cursorBlink: true,
+                    cursorStyle: 'block',
+                    fontSize: 14,
+                    fontFamily: 'JetBrains Mono, Consolas, Monaco, monospace',
+                    theme: {
+                        background: '#0d1117',
+                        foreground: '#c9d1d9',
+                        cursor: '#58a6ff',
+                        cursorAccent: '#0d1117',
+                        black: '#484f58',
+                        red: '#ff7b72',
+                        green: '#7ee787',
+                        yellow: '#f2cc60',
+                        blue: '#58a6ff',
+                        magenta: '#bc8cff',
+                        cyan: '#39c5cf',
+                        white: '#b1bac4',
+                        brightBlack: '#6e7681',
+                        brightRed: '#ffa198',
+                        brightGreen: '#56d364',
+                        brightYellow: '#e3b341',
+                        brightBlue: '#79c0ff',
+                        brightMagenta: '#d2a8ff',
+                        brightCyan: '#56d4dd',
+                        brightWhite: '#f0f6fc'
+                    },
+                    allowTransparency: false,
+                    scrollback: 1000,
+                    tabStopWidth: 4
+                });
+
+                // Add addons
+                this.fitAddon = new FitAddon.FitAddon();
+                term.loadAddon(this.fitAddon);
+                term.loadAddon(new WebLinksAddon.WebLinksAddon());
+
+                return term;
+            }
+
+            setupTerminalEventHandlers(term, terminalId) {
+                let inputBuffer = '';
+                let inputTimeout = null;
+                
+                term.onData((data) => {
+                    if (this.activeTerminalId === terminalId) {
+                        inputBuffer += data;
+                        
+                        if (inputTimeout) {
+                            clearTimeout(inputTimeout);
+                        }
+                        
+                        inputTimeout = setTimeout(() => {
+                            if (inputBuffer && this.activeTerminalId === terminalId) {
+                                this.sendToTerminal(terminalId, inputBuffer);
+                                inputBuffer = '';
+                            }
+                        }, 50);
+                    }
+                });
+
+                term.onResize((size) => {
+                    if (this.activeTerminalId === terminalId) {
+                        this.terminalService.resize_terminal(terminalId, size.rows, size.cols);
+                    }
+                });
+            }
+
+            switchToTerminal(terminalId) {
+                if (!this.terminals.has(terminalId)) return;
+                
+                // Hide welcome screen
+                this.elements.welcomeScreen.classList.add('hidden');
+                this.elements.terminalContainer.classList.remove('hidden');
+                
+                // Switch active terminal
+                this.activeTerminalId = terminalId;
+                const terminalData = this.terminals.get(terminalId);
+                
+                // Clear container and mount new terminal
+                this.elements.terminal.innerHTML = '';
+                terminalData.term.open(this.elements.terminal);
+                
+                // Store references
+                this.currentTerm = terminalData.term;
+                this.fitAddon = terminalData.fitAddon;
+                
+                // Fit terminal to container
+                setTimeout(() => {
+                    this.fitAddon.fit();
+                    const size = { rows: this.currentTerm.rows, cols: this.currentTerm.cols };
+                    this.terminalService.resize_terminal(terminalId, size.rows, size.cols);
+                }, 100);
+                
+                // Start reading output
+                this.startReadingTerminal(terminalId);
+                
+                // Update UI
+                this.elements.activeTerminalInfo.textContent = `Active: ${terminalData.name}`;
+            }
+
+            async sendToTerminal(terminalId, data) {
+                if (!this.terminalService || !data) return;
+                
+                try {
+                    const result = await this.terminalService.write_to_terminal(terminalId, data);
+                    if (!result.success) {
+                        console.error('Terminal write failed:', result.error);
+                    }
+                } catch (error) {
+                    console.error('Failed to send data to terminal:', error);
+                }
+            }
+
+            startReadingTerminal(terminalId) {
+                if (this.readingInterval) {
+                    clearInterval(this.readingInterval);
+                }
+                
+                let dynamicInterval = 50;
+                
+                const scheduleNextRead = () => {
+                    this.readingInterval = setTimeout(async () => {
+                        if (this.activeTerminalId !== terminalId) return;
+                        
+                        try {
+                            const result = await this.terminalService.read_from_terminal(terminalId);
+                            if (result.success && result.output && this.currentTerm) {
+                                this.currentTerm.write(result.output);
+                                dynamicInterval = Math.max(20, dynamicInterval - 5);
+                            } else if (result.error && result.error.includes('stopped')) {
+                                // Terminal stopped, update status
+                                if (this.terminals.has(terminalId)) {
+                                    this.terminals.get(terminalId).running = false;
+                                    this.updateTerminalList();
+                                }
+                                this.currentTerm.write('\r\n\x1b[31mVM process has stopped\x1b[0m\r\n');
+                                return; // Stop reading
+                            } else {
+                                dynamicInterval = Math.min(200, dynamicInterval + 15);
+                            }
+                            scheduleNextRead();
+                        } catch (error) {
+                            console.error('Failed to read terminal output:', error);
+                            dynamicInterval = Math.min(2000, dynamicInterval * 1.5);
+                            setTimeout(() => scheduleNextRead(), dynamicInterval);
+                        }
+                    }, dynamicInterval);
+                };
+                
+                scheduleNextRead();
+            }
+            
+            startStatusMonitoring(terminalId) {
+                // Check terminal status every 5 seconds
+                const checkStatus = async () => {
+                    if (!this.terminals.has(terminalId)) return;
+                    
+                    try {
+                        const result = await this.terminalService.get_terminal_status(terminalId);
+                        if (result.success && result.status) {
+                            const terminalData = this.terminals.get(terminalId);
+                            if (terminalData) {
+                                terminalData.running = result.status.running;
+                                this.updateTerminalList();
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Failed to check terminal status:', error);
+                    }
+                    
+                    // Schedule next check
+                    setTimeout(checkStatus, 5000);
+                };
+                
+                checkStatus();
+            }
+
+            updateTerminalList() {
+                const listElement = this.elements.terminalList;
+                listElement.innerHTML = '';
+                
+                for (const [terminalId, terminalData] of this.terminals) {
+                    const item = document.createElement('div');
+                    item.className = `px-4 py-2 hover:bg-terminal-border cursor-pointer flex items-center justify-between ${
+                        terminalId === this.activeTerminalId ? 'bg-terminal-border' : ''
+                    }`;
+                    
+                    // Add status indicator
+                    const statusColor = terminalData.running ? 'bg-terminal-success' : 'bg-terminal-error';
+                    const statusText = terminalData.running ? 'Running' : 'Stopped';
+                    
+                    item.innerHTML = `
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 ${statusColor} rounded-full"></div>
+                            <span class="text-sm">${terminalData.name}</span>
+                        </div>
+                        <button class="text-terminal-error hover:text-red-400 ml-2" onclick="app.closeTerminal('${terminalId}')">×</button>
+                    `;
+                    
+                    item.addEventListener('click', (e) => {
+                        if (e.target.tagName !== 'BUTTON') {
+                            this.switchToTerminal(terminalId);
+                            this.elements.terminalMenu.classList.add('hidden');
+                        }
+                    });
+                    
+                    listElement.appendChild(item);
+                }
+            }
+
+            async closeTerminal(terminalId, switchToAnother = true) {
+                if (!this.terminals.has(terminalId)) return;
+                
+                try {
+                    await this.terminalService.close_terminal(terminalId);
+                } catch (error) {
+                    console.error('Failed to close terminal on backend:', error);
+                }
+                
+                // Clean up frontend
+                const terminalData = this.terminals.get(terminalId);
+                if (terminalData.term) {
+                    terminalData.term.dispose();
+                }
+                
+                this.terminals.delete(terminalId);
+                
+                // Switch to another terminal or show welcome screen
+                if (terminalId === this.activeTerminalId) {
+                    this.activeTerminalId = null;
+                    this.currentTerm = null;
+                    this.fitAddon = null;
+                    
+                    if (switchToAnother && this.terminals.size > 0) {
+                        const nextTerminalId = this.terminals.keys().next().value;
+                        this.switchToTerminal(nextTerminalId);
+                    } else {
+                        this.elements.terminalContainer.classList.add('hidden');
+                        this.elements.welcomeScreen.classList.remove('hidden');
+                        this.elements.activeTerminalInfo.textContent = 'No active VM';
+                        
+                        if (this.readingInterval) {
+                            clearInterval(this.readingInterval);
+                            this.readingInterval = null;
+                        }
+                    }
+                }
+                
+                this.updateTerminalList();
+            }
+
+            updateConnectionStatus(message, isConnected) {
+                const statusElement = this.elements.connectionStatus;
+                const dot = statusElement.querySelector('.w-2');
+                const text = statusElement.querySelector('span');
+                
+                if (isConnected) {
+                    dot.className = 'w-2 h-2 bg-terminal-success rounded-full';
+                } else {
+                    dot.className = 'w-2 h-2 bg-terminal-error rounded-full';
+                }
+                
+                text.textContent = message;
+            }
+
+            showError(message) {
+                alert(message);
+            }
+            
+            loadPersistedTerminals() {
+                // Placeholder for persistence functionality
+            }
+        }
+
+        // Initialize the app
+        let app;
+        document.addEventListener('DOMContentLoaded', () => {
+            app = new HyphaCloudHypervisorApp();
+        });
+    </script>
+</body>
+</html> 

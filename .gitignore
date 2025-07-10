@@ -1,1 +1,5 @@
 bin/
+venv/
+*.pyc
+minione
+*.img
