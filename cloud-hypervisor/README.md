@@ -246,30 +246,6 @@ chmod +x bin/cloud-hypervisor
 sudo -v
 ```
 
-#### 4. Interactive Terminal Not Working
-If you can see the VM boot but can't type commands:
-
-```bash
-# Test interactive functionality
-python3 test-interactive.py
-
-# Check PTY support
-python3 -c "import pty; print('PTY support available')"
-
-# Restart the service
-./run-service.sh
-```
-
-**Symptoms:**
-- VM boots to login prompt
-- Can see output but can't type
-- Login prompt appears but no input works
-
-**Solutions:**
-- The new PTY-based terminal should fix this automatically
-- Ensure you're using the latest version of the service
-- Try refreshing the web interface
-
 ### Debug Mode
 ```bash
 # Enable verbose logging
@@ -331,8 +307,6 @@ For issues and questions:
 - ✅ Ubuntu 20.04 LTS cloud image integration
 - ✅ TAP networking with internet access
 - ✅ Direct kernel boot (no EFI issues)
-- ✅ PTY-based interactive terminal support
-- ✅ Bidirectional console communication
 - ✅ Comprehensive testing suite
 - ✅ Automated setup and deployment
 

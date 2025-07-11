@@ -23,6 +23,21 @@ if [ ! -f "bin/cloud-hypervisor" ] || [ ! -f "bin/vmlinux-ch" ] || [ ! -f "bin/u
     exit 1
 fi
 
+# Set up authorized users from environment variable or prompt
+if [ -z "$AUTHORIZED_EMAILS" ]; then
+    echo "⚠️  No authorized emails specified."
+    echo "   You can either:"
+    echo "   1. Set environment variable: export AUTHORIZED_EMAILS=\"your-email@example.com\""
+    echo "   2. Or run: AUTHORIZED_EMAILS=\"your-email@example.com\" ./run-service.sh"
+    echo ""
+    read -p "Enter your email address: " USER_EMAIL
+    if [ -z "$USER_EMAIL" ]; then
+        echo "❌ Error: Email address required"
+        exit 1
+    fi
+    AUTHORIZED_EMAILS="$USER_EMAIL"
+fi
+
 echo "🔧 Setting up network infrastructure..."
 echo "   - TAP interface: ch-tap0"
 echo "   - Network range: 172.20.0.0/24"

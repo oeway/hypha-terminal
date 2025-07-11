@@ -136,28 +136,6 @@ class CloudHypervisorTerminal:
             
             print(f"Starting Cloud Hypervisor with command: {' '.join(ch_cmd)}")
             
-            # Test the command quickly before running it
-            try:
-                test_result = subprocess.run(
-                    ch_cmd + ['--help'], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=2,
-                    cwd=work_dir
-                )
-                if test_result.returncode != 0 and 'unexpected argument' in test_result.stderr:
-                    raise Exception(f"Command syntax error: {test_result.stderr}")
-            except subprocess.TimeoutExpired:
-                # Help command took too long, that's OK
-                pass
-            except FileNotFoundError:
-                raise Exception("Cloud Hypervisor binary not found")
-            except Exception as e:
-                if 'unexpected argument' in str(e):
-                    raise e
-                # Other errors during test are OK, we'll try the real command
-                pass
-            
             # Create startup script for VM initialization
             startup_script = self._create_startup_script(work_dir, recipe or {})
             
@@ -165,7 +143,7 @@ class CloudHypervisorTerminal:
             ch_process = subprocess.Popen(
                 ch_cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 stdin=subprocess.PIPE,
                 preexec_fn=os.setsid,
                 bufsize=0,
@@ -177,28 +155,15 @@ class CloudHypervisorTerminal:
             
             if ch_process.poll() is not None:
                 # Process ended immediately, check output
-                stdout_output = ""
-                stderr_output = ""
-                try:
-                    stdout_output = ch_process.stdout.read(1024).decode('utf-8', errors='replace')
-                except:
-                    pass
-                try:
-                    stderr_output = ch_process.stderr.read(1024).decode('utf-8', errors='replace')
-                except:
-                    pass
-                
-                full_output = f"STDOUT: {stdout_output}\nSTDERR: {stderr_output}"
+                output = ch_process.stdout.read(1024).decode('utf-8', errors='replace')
                 
                 # Check for specific error types
-                if "Resource busy" in full_output:
+                if "Resource busy" in output:
                     raise Exception(f"Error booting VM: Network interface is busy. Try again in a few seconds.")
-                elif "TapOpen" in full_output:
+                elif "TapOpen" in output:
                     raise Exception(f"Error booting VM: TAP interface error. Network may be in use.")
-                elif "unexpected argument" in full_output:
-                    raise Exception(f"Error booting VM: Command line argument error. {full_output}")
                 else:
-                    raise Exception(f"Error booting VM: {full_output}")
+                    raise Exception(f"Error booting VM: {output}")
             
             # Initialize user terminals if not exists
             if user_id not in self.user_terminals:
@@ -215,9 +180,7 @@ class CloudHypervisorTerminal:
                 'screen_buffer': [],
                 'name': terminal_name,
                 'recipe': recipe or {},
-                'startup_script': startup_script,
-                'pty_master': vm_config.get('pty_master'),
-                'pty_slave': vm_config.get('pty_slave')
+                'startup_script': startup_script
             }
             
             return {"terminal_id": terminal_id, "success": True, "name": terminal_name}
@@ -290,29 +253,6 @@ class CloudHypervisorTerminal:
         """Build Cloud Hypervisor command line"""
         ch_binary = os.path.join(self.base_dir, 'bin', 'cloud-hypervisor')
         
-        # Try to create a PTY for interactive console communication
-        try:
-            import pty
-            master_fd, slave_fd = pty.openpty()
-            
-            # Store the PTY file descriptors in the config for later use
-            config['pty_master'] = master_fd
-            config['pty_slave'] = slave_fd
-            
-            # Test if the PTY is accessible
-            pty_path = os.ttyname(slave_fd)
-            if os.path.exists(pty_path):
-                serial_config = f'pty={pty_path}'
-                print(f"Using PTY for VM console: {pty_path}")
-            else:
-                raise Exception(f"PTY path {pty_path} not accessible")
-            
-        except Exception as e:
-            print(f"Warning: PTY creation failed ({e}), falling back to tty mode")
-            config['pty_master'] = None
-            config['pty_slave'] = None
-            serial_config = 'tty'
-        
         cmd = [
             ch_binary,
             '--cpus', f'boot={config["cpus"]}',
@@ -320,7 +260,7 @@ class CloudHypervisorTerminal:
             '--kernel', config['kernel'],
             '--disk', f'path={config["disk"]}',
             '--console', 'off',  # Disable virtio console to avoid conflicts
-            '--serial', serial_config  # Use PTY for bidirectional communication or fallback to tty
+            '--serial', 'tty'    # Use only serial console
         ]
         
         # Add kernel command line if specified (for direct kernel boot)
@@ -369,17 +309,13 @@ class CloudHypervisorTerminal:
             if terminal['process'].poll() is not None:
                 return {"error": "VM process has stopped", "success": False}
             
-            # Write to the PTY master file descriptor (VM console input)
-            if terminal.get('pty_master') is not None:
-                os.write(terminal['pty_master'], command.encode())
-                return {"success": True}
-            # Fallback to process stdin if PTY is not available
-            elif terminal['process'].stdin and not terminal['process'].stdin.closed:
+            # Write to the Cloud Hypervisor process stdin (VM console input)
+            if terminal['process'].stdin and not terminal['process'].stdin.closed:
                 terminal['process'].stdin.write(command.encode())
                 terminal['process'].stdin.flush()
                 return {"success": True}
             else:
-                return {"error": "Neither PTY nor process stdin available", "success": False}
+                return {"error": "Process stdin not available", "success": False}
         except Exception as e:
             return {"error": str(e), "success": False}
     
@@ -393,30 +329,14 @@ class CloudHypervisorTerminal:
             if terminal['process'].poll() is not None:
                 return {"error": "VM process has stopped", "success": False}
             
-            # Use select for non-blocking read from PTY master (VM console output)
-            if terminal.get('pty_master') is not None:
-                ready, _, _ = select.select([terminal['pty_master']], [], [], 0.1)
+            # Use select for non-blocking read from stdout (VM console output)
+            process = terminal['process']
+            if process.stdout and not process.stdout.closed:
+                ready, _, _ = select.select([process.stdout], [], [], 0.1)
                 
                 if ready:
                     try:
-                        output = os.read(terminal['pty_master'], 4096)
-                        if output:
-                            decoded_output = output.decode('utf-8', errors='replace')
-                            # Store output in screen buffer for reconnection
-                            terminal['screen_buffer'].append(decoded_output)
-                            # Keep buffer size reasonable
-                            if len(terminal['screen_buffer']) > 1000:
-                                terminal['screen_buffer'] = terminal['screen_buffer'][-1000:]
-                            return {"output": decoded_output, "success": True}
-                    except OSError:
-                        pass
-            # Fallback to process stdout if PTY is not available
-            elif terminal['process'].stdout and not terminal['process'].stdout.closed:
-                ready, _, _ = select.select([terminal['process'].stdout], [], [], 0.1)
-                
-                if ready:
-                    try:
-                        output = os.read(terminal['process'].stdout.fileno(), 4096)
+                        output = os.read(process.stdout.fileno(), 4096)
                         if output:
                             decoded_output = output.decode('utf-8', errors='replace')
                             # Store output in screen buffer for reconnection
@@ -449,18 +369,6 @@ class CloudHypervisorTerminal:
                 # Force kill if still running
                 if process.poll() is None:
                     os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            
-            # Clean up PTY file descriptors
-            if terminal.get('pty_master') is not None:
-                try:
-                    os.close(terminal['pty_master'])
-                except:
-                    pass
-            if terminal.get('pty_slave') is not None:
-                try:
-                    os.close(terminal['pty_slave'])
-                except:
-                    pass
             
             # Clean up working directory
             if os.path.exists(terminal['work_dir']):
