@@ -338,6 +338,23 @@
                     
                 } catch (error) {
                     console.error('Login failed:', error);
+                    
+                    // Handle token expiration specifically
+                    if (error.message.includes('token has expired') || 
+                        error.message.includes('Authentication error') ||
+                        error.message.includes('ConnectionAbortedError')) {
+                        // Clear expired token
+                        localStorage.removeItem("token");
+                        localStorage.removeItem("tokenExpiry");
+                        
+                        // Show message and reload page
+                        this.showError('Session expired. Reloading page...');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                        return;
+                    }
+                    
                     this.showError('Login failed: ' + error.message);
                     this.elements.loginBtn.disabled = false;
                     this.elements.loginStatus.classList.add('hidden');
@@ -860,6 +877,20 @@
                     
                 } catch (error) {
                     console.error('Reconnection failed:', error);
+                    
+                    // Handle token expiration during reconnection
+                    if (error.message.includes('token has expired') || 
+                        error.message.includes('Authentication error') ||
+                        error.message.includes('ConnectionAbortedError')) {
+                        // Clear expired token and force logout
+                        localStorage.removeItem("token");
+                        localStorage.removeItem("tokenExpiry");
+                        
+                        this.showError('Session expired. Please log in again.');
+                        this.logout();
+                        return;
+                    }
+                    
                     this.updateConnectionStatus('Connection lost', false);
                     
                     // Retry connection every 5 seconds
